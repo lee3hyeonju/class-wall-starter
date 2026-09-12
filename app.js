@@ -1,5 +1,6 @@
 ﻿import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-analytics.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
 import {
   getFirestore,
   collection,
@@ -8,7 +9,8 @@ import {
   doc,
   onSnapshot,
   query,
-  orderBy
+  orderBy,
+  serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -23,11 +25,15 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const analytics = getAnalytics(app);
-
 const db = getFirestore(app);
+const auth = getAuth(app);
+
 const wall = document.getElementById("wall");
 const input = document.getElementById("input");
 const userArea = document.getElementById("userArea");
+
+let isReady = false;
+let unsub = null;
 
 function setStatus(message) {
   if (userArea) {
@@ -44,8 +50,11 @@ function makeMemo(memoDoc) {
   del.textContent = "삭제";
   del.type = "button";
   del.addEventListener("click", async () => {
+    if (!isReady || !memoDoc?.id) return;
+
     try {
       await deleteDoc(doc(db, "memos", memoDoc.id));
+      setStatus("삭제 완료");
     } catch (error) {
       console.error("메모 삭제 실패:", error);
       setStatus(`삭제 실패 (${error.code || error.message})`);
@@ -69,30 +78,61 @@ function render(snapshotDocs) {
   });
 }
 
+function startListening() {
+  if (unsub) {
+    unsub();
+    unsub = null;
+  }
+
+  try {
+    const q = query(collection(db, "memos"), orderBy("createdAt"));
+    unsub = onSnapshot(
+      q,
+      (snapshot) => {
+        isReady = true;
+        render(snapshot.docs);
+      },
+      (error) => {
+        isReady = false;
+        console.error("Firestore 구독 실패:", error);
+        setStatus(`메모 불러오기 실패 (${error.code || error.message})`);
+      }
+    );
+  } catch (error) {
+    isReady = false;
+    console.error("Firestore 초기화 실패:", error);
+    setStatus("Firestore 연결 실패: 설정 또는 보안 규칙을 확인해 주세요.");
+  }
+}
+
 async function addMemo(text) {
+  if (!isReady) {
+    throw new Error("Firebase 준비가 완료되지 않았습니다.");
+  }
+
   await addDoc(collection(db, "memos"), {
     text,
-    createdAt: Date.now(),
+    createdAt: serverTimestamp(),
   });
 }
 
-try {
-  const q = query(collection(db, "memos"), orderBy("createdAt"));
-  onSnapshot(
-    q,
-    (snapshot) => {
-      render(snapshot.docs);
-      setStatus("로그인 상태: 게스트");
-    },
-    (error) => {
-      console.error("Firestore 구독 실패:", error);
-      setStatus(`메모 불러오기 실패 (${error.code || error.message})`);
-    }
-  );
-} catch (error) {
-  console.error("Firestore 초기화 실패:", error);
-  setStatus("Firestore 연결 실패: 설정 또는 보안 규칙을 확인해 주세요.");
-}
+onAuthStateChanged(auth, (user) => {
+  if (user) {
+    setStatus(`로그인 상태: ${user.isAnonymous ? "게스트" : "사용자"}`);
+    startListening();
+  } else {
+    setStatus("로그인 처리 중...");
+    signInAnonymously(auth)
+      .then(() => {
+        setStatus("로그인 완료(익명)");
+      })
+      .catch((error) => {
+        console.error("익명 로그인 실패:", error);
+        isReady = false;
+        setStatus(`로그인 실패 (${error.code || error.message})`);
+      });
+  }
+});
 
 input?.addEventListener("keydown", async (e) => {
   if (e.key !== "Enter" || e.shiftKey) return;
@@ -101,18 +141,21 @@ input?.addEventListener("keydown", async (e) => {
   const text = input.value.trim();
   if (text === "") return;
 
+  const backup = input.value;
   input.value = "";
 
   try {
     await addMemo(text);
     setStatus("저장 완료");
   } catch (error) {
+    input.value = backup;
     console.error("메모 저장 실패:", error);
     setStatus(`저장 실패 (${error.code || error.message})`);
-    input.value = text;
   }
 
   input.focus();
 });
 
-if (input) input.focus();
+if (input) {
+  input.focus();
+}

@@ -1,5 +1,5 @@
 ﻿import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
-import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-analytics.js";
 import {
   getFirestore,
   collection,
@@ -8,9 +8,7 @@ import {
   doc,
   onSnapshot,
   query,
-  orderBy,
-  serverTimestamp,
-  limit,
+  orderBy
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -20,38 +18,25 @@ const firebaseConfig = {
   storageBucket: "test-class-31357.firebasestorage.app",
   messagingSenderId: "727597155281",
   appId: "1:727597155281:web:1b6e321c44d0927f5396f0",
-  measurementId: "G-70HWR0KJ8L",
+  measurementId: "G-70HWR0KJ8L"
 };
 
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
+
+const db = getFirestore(app);
 const wall = document.getElementById("wall");
 const input = document.getElementById("input");
 const userArea = document.getElementById("userArea");
 
-const localKey = "memo-board:fallback:v1";
-let db = null;
-let isReady = false;
-let isFirestoreMode = true;
-let localMemos = [];
-let unsub = null;
-
 function setStatus(message) {
-  if (userArea) userArea.textContent = message;
-}
-
-function saveLocalMemos(memos) {
-  localStorage.setItem(localKey, JSON.stringify(memos));
-}
-
-function loadLocalMemos() {
-  try {
-    const raw = localStorage.getItem(localKey);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
+  if (userArea) {
+    userArea.textContent = message;
   }
 }
 
-function makeMemoNode(memo) {
+function makeMemo(memoDoc) {
+  const data = memoDoc.data();
   const div = document.createElement("div");
   div.className = "memo";
 
@@ -59,133 +44,54 @@ function makeMemoNode(memo) {
   del.textContent = "삭제";
   del.type = "button";
   del.addEventListener("click", async () => {
-    if (!memo.id) return;
-
-    if (isFirestoreMode && db) {
-      try {
-        await deleteDoc(doc(db, "memos", memo.id));
-      } catch (error) {
-        console.error("Firestore delete failed:", error);
-        setStatus(`삭제 실패 (${error.code || "unknown"}). 다시 시도해 주세요.`);
-      }
-    } else {
-      localMemos = localMemos.filter((item) => item.id !== memo.id);
-      renderLocalMemos();
-      saveLocalMemos(localMemos);
+    try {
+      await deleteDoc(doc(db, "memos", memoDoc.id));
+    } catch (error) {
+      console.error("메모 삭제 실패:", error);
+      setStatus(`삭제 실패 (${error.code || error.message})`);
     }
   });
   div.appendChild(del);
 
   const span = document.createElement("span");
-  span.textContent = memo.text ?? "";
+  span.textContent = data.text ?? "";
   div.appendChild(span);
 
   return div;
 }
 
-function renderLocalMemos() {
+function render(snapshotDocs) {
   if (!wall) return;
-  wall.innerHTML = "";
 
-  const list = localMemos.slice().sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-  list.forEach((memo) => {
-    wall.appendChild(makeMemoNode({ ...memo, id: memo.id || `local-${memo.createdAt}` }));
-  });
-}
-
-function renderFirestore(snapshotDocs) {
-  if (!wall) return;
   wall.innerHTML = "";
   snapshotDocs.forEach((memoDoc) => {
-    wall.appendChild(makeMemoNode({ id: memoDoc.id, ...memoDoc.data() }));
+    wall.appendChild(makeMemo(memoDoc));
   });
 }
 
-async function initFirestore() {
-  try {
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    db = getFirestore(app);
-
-    onAuthStateChanged(auth, (user) => {
-      if (!user) {
-        setStatus("로그인 처리 중...");
-        signInAnonymously(auth).catch((error) => {
-          console.error("anonymous sign-in failed:", error);
-          switchToLocal("로그인 실패로 로컬 보관 모드로 전환: " + (error.code || "unknown"));
-        });
-      } else {
-        setStatus("Firebase 로그인: 게스트(익명)");
-        startFirestoreListener();
-      }
-    });
-  } catch (error) {
-    console.error("Firebase init failed:", error);
-    switchToLocal("Firebase 초기화 실패로 로컬 보관 모드로 전환: " + (error.message || error.code));
-  }
-}
-
-function startFirestoreListener() {
-  if (!db) return;
-
-  if (unsub) {
-    unsub();
-    unsub = null;
-  }
-
-  const memoCol = collection(db, "memos");
-  const q = query(memoCol, orderBy("createdAt"), limit(200));
-
-  unsub = onSnapshot(
-    q,
-    (snapshot) => {
-      isFirestoreMode = true;
-      isReady = true;
-      setStatus("Firebase 준비 완료");
-      renderFirestore(snapshot.docs);
-    },
-    (error) => {
-      console.error("onSnapshot failed:", error);
-      switchToLocal(`Firestore 구독 실패 (${error.code || error.message})로 로컬 모드로 전환`);
-    }
-  );
-}
-
-function switchToLocal(reason) {
-  isFirestoreMode = false;
-  isReady = true;
-  localMemos = loadLocalMemos();
-  renderLocalMemos();
-  setStatus(reason);
-}
-
-async function saveMemo(text) {
-  if (!text) return;
-
-  if (!isReady) {
-    setStatus("아직 Firebase 준비가 안 되어 큐에 저장합니다.");
-  }
-
-  const payload = {
+async function addMemo(text) {
+  await addDoc(collection(db, "memos"), {
     text,
     createdAt: Date.now(),
-  };
-
-  if (isFirestoreMode && db) {
-    await addDoc(collection(db, "memos"), {
-      ...payload,
-      createdAt: serverTimestamp(),
-    });
-    return;
-  }
-
-  localMemos.push(payload);
-  saveLocalMemos(localMemos);
-  renderLocalMemos();
+  });
 }
 
-if (wall && input) {
-  renderLocalMemos();
+try {
+  const q = query(collection(db, "memos"), orderBy("createdAt"));
+  onSnapshot(
+    q,
+    (snapshot) => {
+      render(snapshot.docs);
+      setStatus("로그인 상태: 게스트");
+    },
+    (error) => {
+      console.error("Firestore 구독 실패:", error);
+      setStatus(`메모 불러오기 실패 (${error.code || error.message})`);
+    }
+  );
+} catch (error) {
+  console.error("Firestore 초기화 실패:", error);
+  setStatus("Firestore 연결 실패: 설정 또는 보안 규칙을 확인해 주세요.");
 }
 
 input?.addEventListener("keydown", async (e) => {
@@ -193,26 +99,20 @@ input?.addEventListener("keydown", async (e) => {
 
   e.preventDefault();
   const text = input.value.trim();
-  if (!text) return;
+  if (text === "") return;
 
-  const oldText = input.value;
   input.value = "";
 
   try {
-    await saveMemo(text);
-    setStatus(isFirestoreMode ? "저장 완료" : "로컬 임시 저장(네트워크 복구 시 동기화 필요)");
+    await addMemo(text);
+    setStatus("저장 완료");
   } catch (error) {
-    console.error("save failed:", error);
-    input.value = oldText;
+    console.error("메모 저장 실패:", error);
     setStatus(`저장 실패 (${error.code || error.message})`);
+    input.value = text;
   }
 
   input.focus();
 });
 
-if (input) {
-  input.focus();
-}
-
-setStatus("Firebase 연결 준비 중...");
-initFirestore();
+if (input) input.focus();

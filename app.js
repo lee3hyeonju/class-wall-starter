@@ -8,9 +8,6 @@ import {
   deleteDoc,
   doc,
   onSnapshot,
-  query,
-  orderBy,
-  serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -32,13 +29,17 @@ const wall = document.getElementById("wall");
 const input = document.getElementById("input");
 const userArea = document.getElementById("userArea");
 
-let isReady = false;
-let unsub = null;
-
 function setStatus(message) {
-  if (userArea) {
-    userArea.textContent = message;
+  if (userArea) userArea.textContent = message;
+}
+
+function toMillis(value) {
+  if (value == null) return 0;
+  if (typeof value === "number") return value;
+  if (typeof value === "object" && typeof value.toMillis === "function") {
+    return value.toMillis();
   }
+  return Number(value) || 0;
 }
 
 function makeMemo(memoDoc) {
@@ -50,8 +51,6 @@ function makeMemo(memoDoc) {
   del.textContent = "삭제";
   del.type = "button";
   del.addEventListener("click", async () => {
-    if (!isReady || !memoDoc?.id) return;
-
     try {
       await deleteDoc(doc(db, "memos", memoDoc.id));
       setStatus("삭제 완료");
@@ -69,50 +68,50 @@ function makeMemo(memoDoc) {
   return div;
 }
 
-function render(snapshotDocs) {
+function render(snapshot) {
   if (!wall) return;
 
+  const docs = snapshot.docs
+    .slice()
+    .sort((a, b) => {
+      const t1 = toMillis(a.data().createdAt);
+      const t2 = toMillis(b.data().createdAt);
+      return t1 - t2;
+    });
+
   wall.innerHTML = "";
-  snapshotDocs.forEach((memoDoc) => {
+  docs.forEach((memoDoc) => {
     wall.appendChild(makeMemo(memoDoc));
   });
 }
 
-function startListening() {
-  if (unsub) {
-    unsub();
-    unsub = null;
-  }
-
+async function startListening() {
   try {
-    const q = query(collection(db, "memos"), orderBy("createdAt"));
-    unsub = onSnapshot(
-      q,
+    onSnapshot(
+      collection(db, "memos"),
       (snapshot) => {
-        isReady = true;
-        render(snapshot.docs);
+        if (snapshot.empty) {
+          setStatus("메모가 없습니다.");
+        } else {
+          setStatus("Firebase 연결 완료");
+        }
+        render(snapshot);
       },
       (error) => {
-        isReady = false;
         console.error("Firestore 구독 실패:", error);
         setStatus(`메모 불러오기 실패 (${error.code || error.message})`);
       }
     );
   } catch (error) {
-    isReady = false;
     console.error("Firestore 초기화 실패:", error);
     setStatus("Firestore 연결 실패: 설정 또는 보안 규칙을 확인해 주세요.");
   }
 }
 
 async function addMemo(text) {
-  if (!isReady) {
-    throw new Error("Firebase 준비가 완료되지 않았습니다.");
-  }
-
   await addDoc(collection(db, "memos"), {
     text,
-    createdAt: serverTimestamp(),
+    createdAt: Date.now(),
   });
 }
 
@@ -122,15 +121,10 @@ onAuthStateChanged(auth, (user) => {
     startListening();
   } else {
     setStatus("로그인 처리 중...");
-    signInAnonymously(auth)
-      .then(() => {
-        setStatus("로그인 완료(익명)");
-      })
-      .catch((error) => {
-        console.error("익명 로그인 실패:", error);
-        isReady = false;
-        setStatus(`로그인 실패 (${error.code || error.message})`);
-      });
+    signInAnonymously(auth).catch((error) => {
+      console.error("익명 로그인 실패:", error);
+      setStatus(`로그인 실패 (${error.code || error.message})`);
+    });
   }
 });
 
@@ -139,7 +133,7 @@ input?.addEventListener("keydown", async (e) => {
 
   e.preventDefault();
   const text = input.value.trim();
-  if (text === "") return;
+  if (!text) return;
 
   const backup = input.value;
   input.value = "";
@@ -156,6 +150,4 @@ input?.addEventListener("keydown", async (e) => {
   input.focus();
 });
 
-if (input) {
-  input.focus();
-}
+if (input) input.focus();

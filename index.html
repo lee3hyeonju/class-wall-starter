@@ -1,49 +1,150 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>우리 반 담벼락</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📌</text></svg>">
+  <title>클래스 게시판</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🙂</text></svg>">
   <style>
-    body { font-family: sans-serif; margin: 20px; }
-    h1 { font-size: 24px; }
-    .notice { background: #ffe9e9; padding: 10px; }
+    :root {
+      --bg: #f3f7fb;
+      --card: rgba(255, 255, 255, 0.9);
+      --text: #18263b;
+      --muted: #52617a;
+      --line: #d7e2f3;
+      --brand: #3569f4;
+      --danger: #e25757;
+      --shadow: 0 24px 50px rgba(25, 52, 103, 0.12);
+    }
+    @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@500;700;800&family=Inter:wght@400;500&display=swap');
 
-    /* 로그인 버튼이 들어올 자리 */
-    #userArea { margin: 10px 0; color: #666; }
-
-    /* 메모 쓰는 칸 */
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: radial-gradient(1200px 600px at 10% 0%, #d8e8ff 0%, rgba(216,232,255,0) 55%),
+                  radial-gradient(1200px 600px at 90% 20%, #ffe9f4 0%, rgba(255,233,244,0) 50%),
+                  linear-gradient(135deg, #f8fbff, #eff5ff);
+      padding: 28px;
+    }
+    .app {
+      max-width: 980px;
+      margin: 0 auto;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 24px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(4px);
+    }
+    h1 {
+      margin: 0;
+      font-family: "Nunito", "Noto Sans KR", "Apple SD Gothic Neo", sans-serif;
+      font-size: clamp(24px, 3vw, 34px);
+      font-weight: 800;
+    }
+    .notice {
+      margin: 16px 0 10px;
+      background: #f5f9ff;
+      color: var(--muted);
+      border: 1px solid #dfeaff;
+      border-radius: 12px;
+      padding: 11px 14px;
+      font-size: 14px;
+    }
+    #userArea {
+      margin: 10px 0;
+      color: #6e7a90;
+      min-height: 20px;
+      font-size: 14px;
+      font-weight: 500;
+    }
     #writer { margin: 16px 0; }
-    #writer textarea { width: 400px; font-size: 16px; }
-
-    /* 메모가 붙는 담벼락 */
-    #wall { display: flex; flex-wrap: wrap; gap: 10px; }
-    .memo { border: 1px solid #ddd; background: #fffde7; padding: 10px; width: 200px; font-size: 15px; }
-    .memo button { float: right; }
+    #writer textarea {
+      width: min(640px, 100%);
+      min-height: 86px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid #dbe6f6;
+      font-size: 16px;
+      line-height: 1.5;
+      resize: vertical;
+      transition: border-color .15s ease, box-shadow .15s ease;
+      background: #fbfdff;
+    }
+    #writer textarea:focus {
+      outline: none;
+      border-color: #9bb7ff;
+      box-shadow: 0 0 0 3px rgba(53,105,244,0.16);
+    }
+    #wall {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 12px;
+    }
+    .memo {
+      position: relative;
+      border-radius: 14px;
+      border: 1px solid #e6edf9;
+      background: linear-gradient(160deg, #ffffff, #fbfdff);
+      padding: 12px 14px;
+      min-height: 78px;
+      font-size: 15px;
+      line-height: 1.55;
+      box-shadow: 0 10px 26px rgba(30, 58, 138, 0.08);
+      animation: popIn .25s ease both;
+    }
+    @keyframes popIn {
+      from { transform: translateY(4px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    .memo span {
+      white-space: pre-wrap;
+      display: block;
+      padding-right: 58px;
+    }
+    .memo button {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      border: none;
+      border-radius: 10px;
+      padding: 6px 11px;
+      background: var(--danger);
+      color: #fff;
+      font-weight: 700;
+      font-size: 12px;
+      cursor: pointer;
+      transition: transform .12s ease, opacity .12s ease;
+    }
+    .memo button:hover {
+      opacity: .92;
+      transform: translateY(-1px);
+    }
+    .memo button:active {
+      transform: translateY(0);
+    }
+    @media (max-width: 560px) {
+      body { padding: 14px; }
+      .app { padding: 16px; border-radius: 16px; }
+    }
   </style>
 </head>
 <body>
+  <div class="app">
+    <h1>클래스 게시판</h1>
+    <p class="notice">한 줄 글귀로 빠르게 남겨보세요. 저장은 Enter, 줄바꿈은 Shift + Enter 입니다.</p>
+    <div id="userArea">로그인 상태: 게스트</div>
 
-  <h1>우리 반 담벼락</h1>
+    <div id="writer">
+      <textarea id="input" rows="3" placeholder="새 메모를 입력하세요"></textarea>
+    </div>
 
-  <!-- 백엔드 1 시간에 저장 기능을 붙이면 이 안내문은 지웁니다 -->
-  <p class="notice">아직 저장 기능이 없습니다. 새로고침하면 방금 쓴 메모가 모두 사라집니다.</p>
-
-  <!-- 백엔드 2 시간에 여기에 로그인 버튼과 내 이름이 들어옵니다 -->
-  <div id="userArea">아직 로그인 기능이 없습니다.</div>
-
-  <div id="writer">
-    <textarea id="input" rows="3" placeholder="메모를 쓰고 엔터"></textarea>
+    <div id="wall"></div>
   </div>
 
-  <!-- 메모는 app.js가 그립니다 -->
-  <div id="wall"></div>
-
-  <!--
-    type="module" 로 불러옵니다.
-    Firebase SDK가 import 문법이라, 백엔드 시간에 이 방식이어야 붙일 수 있습니다.
-  -->
   <script type="module" src="app.js"></script>
 </body>
 </html>

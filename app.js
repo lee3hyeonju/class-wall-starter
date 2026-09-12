@@ -1,112 +1,83 @@
-// ===================================================
-// 우리 반 담벼락 - 시작점
-//
-// 메모를 쓰면 올린 순서대로 담벼락에 붙습니다.
-// 지금은 데이터가 아래 배열에만 들어 있어서,
-// 브라우저를 새로고침하면 전부 사라집니다.
-// ===================================================
+﻿import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+import { getFirestore, collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
+const firebaseConfig = {
+  apiKey: "AIzaSyC2yOp5b52HLCo0LTKZWeGCw6ZFdVJOlWU",
+  authDomain: "test-class-31357.firebaseapp.com",
+  projectId: "test-class-31357",
+  storageBucket: "test-class-31357.firebasestorage.app",
+  messagingSenderId: "727597155281",
+  appId: "1:727597155281:web:1b6e321c44d0927f5396f0",
+  measurementId: "G-70HWR0KJ8L",
+};
 
-// --- 메모 목록 ---
-// createdAt 은 메모를 쓴 시각(밀리초)입니다. 이 값으로 순서를 정합니다.
-let memos = [
-  { id: 1, text: "오늘 과학 시간에 한 실험이 재미있었다", createdAt: 1757030400000 },
-  { id: 2, text: "궁금한 점 - 물은 왜 100도에서 끓나요?", createdAt: 1757030500000 },
-  { id: 3, text: "모둠 친구들이 도와줘서 고마웠다", createdAt: 1757030600000 }
-];
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
 
-let nextId = 4;  // 새 메모에 붙일 번호
+const wall = document.getElementById("wall");
+const input = document.getElementById("input");
+const memosCol = collection(db, "memos");
 
-
-// ===================================================
-// 데이터를 다루는 함수 세 개
-// 백엔드 1 시간에 이 세 개가 Firestore를 쓰는 코드로 바뀝니다.
-// ===================================================
-
-// 메모를 읽어 옵니다.
-// 백엔드 1: 여기가 Firestore에서 가져오는 코드로 바뀝니다.
-//           순서는 orderBy("createdAt") 으로 맞춥니다.
-function loadMemos() {
-  return memos.slice().sort(function (a, b) {
-    return a.createdAt - b.createdAt;
-  });
-}
-
-// 메모를 새로 씁니다.
-// 백엔드 2: 여기에 "누가 썼는지"(uid)를 함께 저장하게 됩니다.
-function addMemo(text) {
-  memos.push({
-    id: nextId,
-    text: text,
-    createdAt: Date.now()
-  });
-  nextId = nextId + 1;
-}
-
-// 메모를 지웁니다.
-// 백엔드 2: 지금은 누구든 남의 메모를 지울 수 있습니다. 이걸 막는 것이 과제입니다.
-function deleteMemo(id) {
-  memos = memos.filter(function (memo) {
-    return memo.id !== id;
-  });
-}
-
-
-// ===================================================
-// 화면 그리기
-// ===================================================
-
-function render() {
-  const wall = document.getElementById("wall");
+function render(memos) {
   wall.innerHTML = "";
 
-  loadMemos().forEach(function (memo) {
-    wall.appendChild(makeMemo(memo));
+  memos.forEach((memoDoc) => {
+    wall.appendChild(makeMemo(memoDoc));
   });
 }
 
-// 메모 한 장 만들기
-function makeMemo(memo) {
+function makeMemo(memoDoc) {
+  const data = memoDoc.data();
+
   const div = document.createElement("div");
   div.className = "memo";
 
   const del = document.createElement("button");
-  del.textContent = "×";
-  del.onclick = function () {
-    deleteMemo(memo.id);
-    render();
-  };
+  del.textContent = "횞";
+  del.addEventListener("click", async () => {
+    await deleteDoc(doc(db, "memos", memoDoc.id));
+  });
   div.appendChild(del);
 
   const span = document.createElement("span");
-  span.textContent = memo.text;
+  span.textContent = data.text ?? "";
   div.appendChild(span);
 
   return div;
 }
 
+async function addMemo(text) {
+  const trimmed = text.trim();
+  if (!trimmed) return;
 
-// ===================================================
-// 메모 쓰는 칸
-// 엔터를 누르면 담벼락에 붙습니다 (줄바꿈은 Shift + 엔터)
-// ===================================================
+  await addDoc(memosCol, {
+    text: trimmed,
+    createdAt: Date.now(),
+  });
+}
 
-const input = document.getElementById("input");
+const q = query(memosCol, orderBy("createdAt"));
+onSnapshot(
+  q,
+  (snapshot) => {
+    render(snapshot.docs);
+  },
+  (error) => {
+    console.error("Firestore subscription error:", error);
+  }
+);
 
-input.onkeydown = function (e) {
+input.addEventListener("keydown", async (e) => {
   if (e.key === "Enter" && !e.shiftKey) {
     e.preventDefault();
 
     const text = input.value.trim();
     if (text === "") return;
 
-    addMemo(text);
     input.value = "";
-    render();
+    await addMemo(text);
+    input.focus();
   }
-};
+});
 
-
-// 첫 화면 그리기
-render();
 input.focus();

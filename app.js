@@ -33,7 +33,7 @@ function makeMemo(memoDoc) {
   div.className = "memo";
 
   const del = document.createElement("button");
-  del.textContent = "횞";
+  del.textContent = "삭제";
   del.addEventListener("click", async () => {
     await deleteDoc(doc(db, "memos", memoDoc.id));
   });
